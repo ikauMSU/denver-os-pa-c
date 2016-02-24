@@ -404,7 +404,7 @@ alloc_status mem_del_alloc(pool_pt pool, alloc_pt alloc) {
         assert(_mem_add_to_gap_ix(mgr, node_to_add->alloc_record.size, node_to_add) == ALLOC_OK);
     }
     else {
-        mgr->pool.num_gaps++;
+        assert(_mem_add_to_gap_ix(mgr, del_node->alloc_record.size, del_node) == ALLOC_OK);
     }
     // check success
 
