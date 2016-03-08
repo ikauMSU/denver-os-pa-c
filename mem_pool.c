@@ -117,10 +117,11 @@ alloc_status mem_free() {
     if (pool_store) {
         for (int i = 0; i < pool_store_size; i++) {
             if(pool_store[i] != NULL) {
-                return ALLOC_NOT_FREED;
+                return ALLOC_CALLED_AGAIN;
             }
         }
         free(pool_store);
+        pool_store = NULL;
         pool_store_size = 0;
         pool_store_capacity = 0;
         return ALLOC_OK;
@@ -129,7 +130,7 @@ alloc_status mem_free() {
     // can free the pool store array
     // update static variables
 
-    return ALLOC_FAIL;
+    return ALLOC_CALLED_AGAIN;
 }
 
 pool_pt mem_pool_open(size_t size, alloc_policy policy) {
@@ -254,11 +255,14 @@ alloc_pt mem_new_alloc(pool_pt pool, size_t size) {
         for (int i = 0; i < mgr->pool.num_gaps; i++) {
             if ((mgr->gap_ix[i].size >= size)) {
                 suf_node = mgr->gap_ix[i].node;
+                break;
             }
         }
     }
     // check if node found
-    assert(suf_node);
+    if (suf_node == NULL) {
+        return NULL;
+    }
     // update metadata (num_allocs, alloc_size)
     mgr->pool.num_allocs += 1;
     mgr->pool.alloc_size += size;
@@ -292,6 +296,10 @@ alloc_pt mem_new_alloc(pool_pt pool, size_t size) {
         //   update metadata (used_nodes)
         mgr->used_nodes += 1;
         //   update linked list (new node right after the node for allocation)
+        unused_node->next = suf_node->next;
+        if (suf_node->next) {
+            suf_node->next->prev = unused_node;
+        }
         suf_node->next = unused_node;
         unused_node->prev = suf_node;
         //   add to gap index
@@ -517,6 +525,7 @@ static alloc_status _mem_remove_from_gap_ix(pool_mgr_pt pool_mgr,
     for (int i = 0; i < pool_mgr->pool.num_gaps; i++) {
         if ((pool_mgr->gap_ix[i].size == size) && (pool_mgr->gap_ix[i].node == node)) {
             index_pos = i;
+            break;
         }
     }
     // loop from there to the end of the array:
@@ -544,8 +553,17 @@ static alloc_status _mem_sort_gap_ix(pool_mgr_pt pool_mgr) {
             pool_mgr->gap_ix[i] = pool_mgr->gap_ix[i-1];
             pool_mgr->gap_ix[i-1] = temp;
         }
+        else if (pool_mgr->gap_ix[i].size == pool_mgr->gap_ix[i-1].size) {
+            if (pool_mgr->gap_ix[i].node->alloc_record.mem < pool_mgr->gap_ix[i - 1].node->alloc_record.mem) {
+                gap_t temp = pool_mgr->gap_ix[i];
+                pool_mgr->gap_ix[i] = pool_mgr->gap_ix[i-1];
+                pool_mgr->gap_ix[i-1] = temp;
+            }
+        }
     }
     //    if the size of the current entry is less than the previous (u - 1)
+    //    or if the sizes are the same but the current entry points to a
+    //    node with a lower address of pool allocation address (mem)
     //       swap them (by copying) (remember to use a temporary variable)
 
     return ALLOC_OK;
